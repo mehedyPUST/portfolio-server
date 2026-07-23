@@ -3,7 +3,7 @@ const clientPromise = require('../db');
 const authMiddleware = require('../middleware/auth');
 const router = express.Router();
 
-// GET /api/hero
+// GET — public
 router.get('/', async (req, res) => {
     try {
         const client = await clientPromise;
@@ -11,39 +11,23 @@ router.get('/', async (req, res) => {
         const hero = await db.collection('hero').findOne({});
         res.json(hero || {});
     } catch (error) {
-        res.status(500).json({ error: 'Failed to fetch hero data' });
+        res.status(500).json({ error: 'Failed to fetch hero' });
     }
 });
 
-// PUT /api/hero (protected)
+// PUT — admin
 router.put('/', authMiddleware, async (req, res) => {
     try {
         const { title, subtitle, description, resumeLink, github, linkedin, facebook, photoUrl } = req.body;
-
         const client = await clientPromise;
         const db = client.db('portfolio');
-
-        const heroData = {
-            title,
-            subtitle,
-            description,
-            resumeLink,
-            github,
-            linkedin,
-            facebook,
-            photoUrl,
-            updatedAt: new Date(),
-        };
-
         await db.collection('hero').updateOne(
             {},
-            { $set: heroData },
+            { $set: { title, subtitle, description, resumeLink, github, linkedin, facebook, photoUrl, updatedAt: new Date() } },
             { upsert: true }
         );
-
-        res.json({ success: true, message: 'Hero updated successfully' });
+        res.json({ success: true });
     } catch (error) {
-        console.error('Hero update error:', error);
         res.status(500).json({ error: 'Failed to update hero' });
     }
 });

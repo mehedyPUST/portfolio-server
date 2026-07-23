@@ -4,128 +4,79 @@ const clientPromise = require('../db');
 const authMiddleware = require('../middleware/auth');
 const router = express.Router();
 
-// GET /api/projects — public, returns all projects
+// GET all — public
 router.get('/', async (req, res) => {
     try {
         const client = await clientPromise;
         const db = client.db('portfolio');
-        const projects = await db
-            .collection('projects')
-            .find({})
-            .sort({ createdAt: -1 })
-            .toArray();
+        const projects = await db.collection('projects').find({}).sort({ createdAt: -1 }).toArray();
         res.json(projects);
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch projects' });
     }
 });
 
-// GET /api/projects/featured — public, returns 3 featured
+// GET featured — public
 router.get('/featured', async (req, res) => {
     try {
         const client = await clientPromise;
         const db = client.db('portfolio');
-        const projects = await db
-            .collection('projects')
-            .find({ featured: true })
-            .sort({ createdAt: -1 })
-            .limit(3)
-            .toArray();
+        const projects = await db.collection('projects').find({ featured: true }).sort({ createdAt: -1 }).limit(3).toArray();
         res.json(projects);
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch featured projects' });
     }
 });
 
-// POST /api/projects (protected)
+// POST — admin
 router.post('/', authMiddleware, async (req, res) => {
     try {
         const { name, image, tech, description, live, github, challenges, improvements, featured } = req.body;
-
         if (!name || !image || !tech || !description) {
-            return res.status(400).json({ error: 'Name, image, tech, and description are required' });
+            return res.status(400).json({ error: 'Required fields missing' });
         }
-
         const client = await clientPromise;
         const db = client.db('portfolio');
-
-        const project = {
-            name,
-            image,
-            tech,
-            description,
-            live: live || '#',
-            github: github || '#',
-            challenges: challenges || '',
-            improvements: improvements || '',
+        const result = await db.collection('projects').insertOne({
+            name, image, tech, description,
+            live: live || '#', github: github || '#',
+            challenges: challenges || '', improvements: improvements || '',
             featured: featured || false,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-        };
-
-        const result = await db.collection('projects').insertOne(project);
-        res.status(201).json({ success: true, project: { ...project, _id: result.insertedId } });
+            createdAt: new Date(), updatedAt: new Date(),
+        });
+        res.status(201).json({ success: true, _id: result.insertedId });
     } catch (error) {
-        console.error('Create project error:', error);
         res.status(500).json({ error: 'Failed to create project' });
     }
 });
 
-// PUT /api/projects/:id (protected)
+// PUT — admin
 router.put('/:id', authMiddleware, async (req, res) => {
     try {
-        const { id } = req.params;
         const { name, image, tech, description, live, github, challenges, improvements, featured } = req.body;
-
         const client = await clientPromise;
         const db = client.db('portfolio');
-
-        const updateData = {
-            name,
-            image,
-            tech,
-            description,
-            live: live || '#',
-            github: github || '#',
-            challenges: challenges || '',
-            improvements: improvements || '',
-            featured: featured || false,
-            updatedAt: new Date(),
-        };
-
-        const result = await db
-            .collection('projects')
-            .updateOne({ _id: new ObjectId(id) }, { $set: updateData });
-
-        if (result.matchedCount === 0) {
-            return res.status(404).json({ error: 'Project not found' });
-        }
-
-        res.json({ success: true, message: 'Project updated' });
+        const result = await db.collection('projects').updateOne(
+            { _id: new ObjectId(req.params.id) },
+            { $set: { name, image, tech, description, live, github, challenges, improvements, featured, updatedAt: new Date() } }
+        );
+        if (result.matchedCount === 0) return res.status(404).json({ error: 'Not found' });
+        res.json({ success: true });
     } catch (error) {
-        console.error('Update project error:', error);
-        res.status(500).json({ error: 'Failed to update project' });
+        res.status(500).json({ error: 'Failed to update' });
     }
 });
 
-// DELETE /api/projects/:id (protected)
+// DELETE — admin
 router.delete('/:id', authMiddleware, async (req, res) => {
     try {
-        const { id } = req.params;
-
         const client = await clientPromise;
         const db = client.db('portfolio');
-
-        const result = await db.collection('projects').deleteOne({ _id: new ObjectId(id) });
-
-        if (result.deletedCount === 0) {
-            return res.status(404).json({ error: 'Project not found' });
-        }
-
-        res.json({ success: true, message: 'Project deleted' });
+        const result = await db.collection('projects').deleteOne({ _id: new ObjectId(req.params.id) });
+        if (result.deletedCount === 0) return res.status(404).json({ error: 'Not found' });
+        res.json({ success: true });
     } catch (error) {
-        console.error('Delete project error:', error);
-        res.status(500).json({ error: 'Failed to delete project' });
+        res.status(500).json({ error: 'Failed to delete' });
     }
 });
 
