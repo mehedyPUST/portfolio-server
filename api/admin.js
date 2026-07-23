@@ -19,34 +19,40 @@ router.post('/login', async (req, res) => {
         const admin = await db.collection('admin').findOne({ username });
 
         if (!admin) {
-            return res.status(401).json({ error: 'Invalid credentials' });
+            return res.status(401).json({ error: `Admin not found: ${username}` });
+        }
+
+        if (!process.env.JWT_SECRET) {
+            return res.status(500).json({ error: 'JWT_SECRET not configured on server' });
         }
 
         const isMatch = await bcrypt.compare(password, admin.passwordHash);
+
         if (!isMatch) {
-            return res.status(401).json({ error: 'Invalid credentials' });
+            return res.status(401).json({ error: 'Invalid password' });
         }
 
-        // Generate JWT
         const token = jwt.sign(
             { username: admin.username, role: 'admin' },
             process.env.JWT_SECRET,
             { expiresIn: '24h' }
         );
 
-        // Set cookie
         res.cookie('admin_token', token, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
+            secure: true,
             sameSite: 'lax',
-            maxAge: 24 * 60 * 60 * 1000, // 24 hours
+            maxAge: 24 * 60 * 60 * 1000,
             path: '/',
         });
 
         res.json({ success: true, message: 'Login successful' });
     } catch (error) {
         console.error('Login error:', error);
-        res.status(500).json({ error: 'Login failed' });
+        res.status(500).json({
+            error: 'Login failed',
+            details: error.message,
+        });
     }
 });
 
@@ -56,7 +62,7 @@ router.post('/logout', (req, res) => {
     res.json({ success: true, message: 'Logged out' });
 });
 
-// GET /api/admin/verify — check if token is valid
+// GET /api/admin/verify
 router.get('/verify', authMiddleware, (req, res) => {
     res.json({ authenticated: true, username: req.admin.username });
 });
