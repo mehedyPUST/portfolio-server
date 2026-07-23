@@ -19,7 +19,7 @@ router.post('/login', async (req, res) => {
         const admin = await db.collection('admin').findOne({ username });
 
         if (!admin) {
-            return res.status(401).json({ error: `Admin not found: ${username}` });
+            return res.status(401).json({ error: 'Invalid credentials' });
         }
 
         if (!process.env.JWT_SECRET) {
@@ -29,20 +29,22 @@ router.post('/login', async (req, res) => {
         const isMatch = await bcrypt.compare(password, admin.passwordHash);
 
         if (!isMatch) {
-            return res.status(401).json({ error: 'Invalid password' });
+            return res.status(401).json({ error: 'Invalid credentials' });
         }
 
+        // Generate JWT
         const token = jwt.sign(
             { username: admin.username, role: 'admin' },
             process.env.JWT_SECRET,
             { expiresIn: '24h' }
         );
 
+        // Set cookie — cross-site compatible
         res.cookie('admin_token', token, {
             httpOnly: true,
             secure: true,
-            sameSite: 'lax',
-            maxAge: 24 * 60 * 60 * 1000,
+            sameSite: 'none',
+            maxAge: 24 * 60 * 60 * 1000, // 24 hours
             path: '/',
         });
 
@@ -58,7 +60,12 @@ router.post('/login', async (req, res) => {
 
 // POST /api/admin/logout
 router.post('/logout', (req, res) => {
-    res.clearCookie('admin_token', { path: '/' });
+    res.clearCookie('admin_token', {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'none',
+        path: '/',
+    });
     res.json({ success: true, message: 'Logged out' });
 });
 
