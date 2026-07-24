@@ -4,24 +4,24 @@ const clientPromise = require('../db');
 const authMiddleware = require('../middleware/auth');
 const router = express.Router();
 
-// GET all — public
+// GET all — sorted by order
 router.get('/', async (req, res) => {
     try {
         const client = await clientPromise;
         const db = client.db('portfolio');
-        const projects = await db.collection('projects').find({}).sort({ createdAt: -1 }).toArray();
+        const projects = await db.collection('projects').find({}).sort({ order: 1, createdAt: -1 }).toArray();
         res.json(projects);
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch projects' });
     }
 });
 
-// GET featured — public
+// GET featured — sorted by order
 router.get('/featured', async (req, res) => {
     try {
         const client = await clientPromise;
         const db = client.db('portfolio');
-        const projects = await db.collection('projects').find({ featured: true }).sort({ createdAt: -1 }).limit(3).toArray();
+        const projects = await db.collection('projects').find({ featured: true }).sort({ order: 1, createdAt: -1 }).limit(3).toArray();
         res.json(projects);
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch featured projects' });
@@ -31,7 +31,7 @@ router.get('/featured', async (req, res) => {
 // POST — admin
 router.post('/', authMiddleware, async (req, res) => {
     try {
-        const { name, image, tech, description, live, github, challenges, improvements, featured } = req.body;
+        const { name, image, tech, description, live, github, challenges, improvements, featured, order } = req.body;
         if (!name || !image || !tech || !description) {
             return res.status(400).json({ error: 'Required fields missing' });
         }
@@ -42,6 +42,7 @@ router.post('/', authMiddleware, async (req, res) => {
             live: live || '#', github: github || '#',
             challenges: challenges || '', improvements: improvements || '',
             featured: featured || false,
+            order: order || 0,
             createdAt: new Date(), updatedAt: new Date(),
         });
         res.status(201).json({ success: true, _id: result.insertedId });
@@ -53,12 +54,12 @@ router.post('/', authMiddleware, async (req, res) => {
 // PUT — admin
 router.put('/:id', authMiddleware, async (req, res) => {
     try {
-        const { name, image, tech, description, live, github, challenges, improvements, featured } = req.body;
+        const { name, image, tech, description, live, github, challenges, improvements, featured, order } = req.body;
         const client = await clientPromise;
         const db = client.db('portfolio');
         const result = await db.collection('projects').updateOne(
             { _id: new ObjectId(req.params.id) },
-            { $set: { name, image, tech, description, live, github, challenges, improvements, featured, updatedAt: new Date() } }
+            { $set: { name, image, tech, description, live, github, challenges, improvements, featured, order: order || 0, updatedAt: new Date() } }
         );
         if (result.matchedCount === 0) return res.status(404).json({ error: 'Not found' });
         res.json({ success: true });
