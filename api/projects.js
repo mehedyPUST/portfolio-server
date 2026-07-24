@@ -31,7 +31,7 @@ router.get('/featured', async (req, res) => {
 // POST — admin
 router.post('/', authMiddleware, async (req, res) => {
     try {
-        const { name, image, tech, description, live, github, challenges, improvements, featured, order } = req.body;
+        const { name, image, tech, description, live, github, backendGithub, challenges, improvements, featured, order } = req.body;
         if (!name || !image || !tech || !description) {
             return res.status(400).json({ error: 'Required fields missing' });
         }
@@ -39,7 +39,9 @@ router.post('/', authMiddleware, async (req, res) => {
         const db = client.db('portfolio');
         const result = await db.collection('projects').insertOne({
             name, image, tech, description,
-            live: live || '#', github: github || '#',
+            live: live || '#',
+            github: github || '#',
+            backendGithub: backendGithub || '',
             challenges: challenges || '', improvements: improvements || '',
             featured: featured || false,
             order: order || 0,
@@ -54,12 +56,12 @@ router.post('/', authMiddleware, async (req, res) => {
 // PUT — admin
 router.put('/:id', authMiddleware, async (req, res) => {
     try {
-        const { name, image, tech, description, live, github, challenges, improvements, featured, order } = req.body;
+        const { name, image, tech, description, live, github, backendGithub, challenges, improvements, featured, order } = req.body;
         const client = await clientPromise;
         const db = client.db('portfolio');
         const result = await db.collection('projects').updateOne(
             { _id: new ObjectId(req.params.id) },
-            { $set: { name, image, tech, description, live, github, challenges, improvements, featured, order: order || 0, updatedAt: new Date() } }
+            { $set: { name, image, tech, description, live, github, backendGithub: backendGithub || '', challenges, improvements, featured, order: order || 0, updatedAt: new Date() } }
         );
         if (result.matchedCount === 0) return res.status(404).json({ error: 'Not found' });
         res.json({ success: true });
