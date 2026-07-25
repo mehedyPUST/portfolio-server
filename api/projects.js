@@ -31,7 +31,7 @@ router.get('/featured', async (req, res) => {
 // PUT /reorder — admin only (batch update order)
 router.put('/reorder', authMiddleware, async (req, res) => {
     try {
-        const { orderedIds } = req.body; // array of project _id in new order
+        const { orderedIds } = req.body;
         if (!orderedIds || !Array.isArray(orderedIds)) {
             return res.status(400).json({ error: 'orderedIds array required' });
         }
@@ -39,7 +39,6 @@ router.put('/reorder', authMiddleware, async (req, res) => {
         const client = await clientPromise;
         const db = client.db('portfolio');
 
-        // Update each project's order based on its position in the array
         const bulkOps = orderedIds.map((id, index) => ({
             updateOne: {
                 filter: { _id: new ObjectId(id) },
@@ -58,21 +57,27 @@ router.put('/reorder', authMiddleware, async (req, res) => {
 // POST — admin
 router.post('/', authMiddleware, async (req, res) => {
     try {
-        const { name, image, tech, description, live, github, backendGithub, challenges, improvements, featured, order } = req.body;
+        const { name, image, tech, description, shortDescription, live, github, backendGithub, challenges, improvements, featured, order } = req.body;
         if (!name || !image || !tech || !description) {
             return res.status(400).json({ error: 'Required fields missing' });
         }
         const client = await clientPromise;
         const db = client.db('portfolio');
         const result = await db.collection('projects').insertOne({
-            name, image, tech, description,
+            name,
+            image,
+            tech,
+            description,
+            shortDescription: shortDescription || '',
             live: live || '#',
             github: github || '#',
             backendGithub: backendGithub || '',
-            challenges: challenges || '', improvements: improvements || '',
+            challenges: challenges || '',
+            improvements: improvements || '',
             featured: featured || false,
             order: order || 0,
-            createdAt: new Date(), updatedAt: new Date(),
+            createdAt: new Date(),
+            updatedAt: new Date(),
         });
         res.status(201).json({ success: true, _id: result.insertedId });
     } catch (error) {
@@ -83,12 +88,28 @@ router.post('/', authMiddleware, async (req, res) => {
 // PUT — admin (single update)
 router.put('/:id', authMiddleware, async (req, res) => {
     try {
-        const { name, image, tech, description, live, github, backendGithub, challenges, improvements, featured, order } = req.body;
+        const { name, image, tech, description, shortDescription, live, github, backendGithub, challenges, improvements, featured, order } = req.body;
         const client = await clientPromise;
         const db = client.db('portfolio');
         const result = await db.collection('projects').updateOne(
             { _id: new ObjectId(req.params.id) },
-            { $set: { name, image, tech, description, live, github, backendGithub: backendGithub || '', challenges, improvements, featured, order: order || 0, updatedAt: new Date() } }
+            {
+                $set: {
+                    name,
+                    image,
+                    tech,
+                    description,
+                    shortDescription: shortDescription || '',
+                    live,
+                    github,
+                    backendGithub: backendGithub || '',
+                    challenges,
+                    improvements,
+                    featured,
+                    order: order || 0,
+                    updatedAt: new Date(),
+                },
+            }
         );
         if (result.matchedCount === 0) return res.status(404).json({ error: 'Not found' });
         res.json({ success: true });
