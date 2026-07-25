@@ -28,6 +28,33 @@ router.get('/featured', async (req, res) => {
     }
 });
 
+// PUT /reorder — admin only (batch update order)
+router.put('/reorder', authMiddleware, async (req, res) => {
+    try {
+        const { orderedIds } = req.body; // array of project _id in new order
+        if (!orderedIds || !Array.isArray(orderedIds)) {
+            return res.status(400).json({ error: 'orderedIds array required' });
+        }
+
+        const client = await clientPromise;
+        const db = client.db('portfolio');
+
+        // Update each project's order based on its position in the array
+        const bulkOps = orderedIds.map((id, index) => ({
+            updateOne: {
+                filter: { _id: new ObjectId(id) },
+                update: { $set: { order: index } },
+            },
+        }));
+
+        await db.collection('projects').bulkWrite(bulkOps);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Reorder error:', error);
+        res.status(500).json({ error: 'Failed to reorder projects' });
+    }
+});
+
 // POST — admin
 router.post('/', authMiddleware, async (req, res) => {
     try {
@@ -53,7 +80,7 @@ router.post('/', authMiddleware, async (req, res) => {
     }
 });
 
-// PUT — admin
+// PUT — admin (single update)
 router.put('/:id', authMiddleware, async (req, res) => {
     try {
         const { name, image, tech, description, live, github, backendGithub, challenges, improvements, featured, order } = req.body;
