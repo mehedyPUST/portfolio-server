@@ -3,7 +3,6 @@ const Groq = require('groq-sdk');
 const clientPromise = require('../db');
 const router = express.Router();
 
-// Only initialise Groq if the API key exists
 let groq;
 if (process.env.GROQ_API_KEY) {
     groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
@@ -16,26 +15,19 @@ const requestCounts = new Map();
 const rateLimiter = (req, res, next) => {
     const ip = req.ip || 'unknown';
     const now = Date.now();
-    const windowMs = 60 * 1000; // 1 minute
+    const windowMs = 60 * 1000;
     const maxRequests = 10;
-
-    if (!requestCounts.has(ip)) {
-        requestCounts.set(ip, []);
-    }
-
+    if (!requestCounts.has(ip)) requestCounts.set(ip, []);
     const timestamps = requestCounts.get(ip).filter(t => now - t < windowMs);
     if (timestamps.length >= maxRequests) {
-        return res.status(429).json({
-            reply: "I'm getting too many questions! Give me a moment. 😅",
-        });
+        return res.status(429).json({ reply: "I'm getting too many questions! Give me a moment. 😅" });
     }
-
     timestamps.push(now);
     requestCounts.set(ip, timestamps);
     next();
 };
 
-// --- Helper functions (unchanged) ---
+// --- Helper functions (return minimal data) ---
 async function getContactInfo() {
     try {
         const client = await clientPromise;
@@ -52,19 +44,16 @@ async function getHeroData() {
     } catch { return null; }
 }
 
-async function getAboutData() {
-    try {
-        const client = await clientPromise;
-        const db = client.db('portfolio');
-        return await db.collection('about').findOne({});
-    } catch { return null; }
-}
-
 async function getProjects() {
     try {
         const client = await clientPromise;
         const db = client.db('portfolio');
-        return await db.collection('projects').find({}).sort({ createdAt: -1 }).toArray();
+        // Only fetch featured or first 3 projects, with only name, tech, description
+        return await db.collection('projects')
+            .find({ featured: true })
+            .project({ name: 1, tech: 1, description: 1, featured: 1 })
+            .limit(3)
+            .toArray();
     } catch { return []; }
 }
 
@@ -72,130 +61,68 @@ async function getProjects() {
 router.post('/chat', rateLimiter, async (req, res) => {
     if (!groq) {
         return res.status(500).json({
-            reply: "The AI assistant is not configured yet. Please set the GROQ_API_KEY on the server.",
+            reply: "AI not configured. Please set the GROQ_API_KEY.",
         });
     }
 
     try {
         const { message } = req.body;
         if (!message || message.trim().length < 2) {
-            return res.json({
-                reply: "Could you elaborate a bit? I'd love to give you a helpful answer! 😊",
-            });
+            return res.json({ reply: "Could you elaborate a bit? 😊" });
         }
 
-        // Fetch live data from MongoDB
-        const [contactInfo, heroData, aboutData, projects] = await Promise.all([
+        // Fetch only necessary data
+        const [contactInfo, heroData, projects] = await Promise.all([
             getContactInfo(),
             getHeroData(),
-            getAboutData(),
             getProjects(),
         ]);
 
-        // Build dynamic contact section
-        let contactSection = '';
+        // Build extremely concise data strings
+        let contactStr = 'No contact info yet.';
         if (contactInfo && (contactInfo.email || contactInfo.phone)) {
-            contactSection = `
-CURRENT CONTACT INFORMATION (live from database):
-- 📧 Email: ${contactInfo.email || 'Not provided'}
-- 📱 Phone: ${contactInfo.phone || 'Not provided'}
-- 💬 WhatsApp: ${contactInfo.whatsapp || 'Not provided'}
-- 💼 LinkedIn: ${contactInfo.linkedin || 'Not provided'}
-- 👨‍💻 GitHub: ${contactInfo.github || 'Not provided'}
-- 📘 Facebook: ${contactInfo.facebook || 'Not provided'}
-- 📍 Location: ${contactInfo.location || 'Pabna, Bangladesh'}
-- 🌐 Portfolio: ${contactInfo.portfolio || 'https://mehedy-pust.vercel.app'}`;
-        } else {
-            contactSection = `
-CONTACT INFORMATION:
-No contact details in database yet. Tell visitors to use the contact form on the portfolio.`;
+            const parts = [];
+            if (contactInfo.email) parts.push(`Email: ${contactInfo.email}`);
+            if (contactInfo.phone) parts.push(`Phone: ${contactInfo.phone}`);
+            if (contactInfo.linkedin) parts.push(`LinkedIn: ${contactInfo.linkedin}`);
+            if (contactInfo.github) parts.push(`GitHub: ${contactInfo.github}`);
+            if (contactInfo.facebook) parts.push(`Facebook: ${contactInfo.facebook}`);
+            contactStr = parts.join(', ');
         }
 
-        // Build dynamic hero section
-        let heroSection = '';
+        let heroStr = 'Mehedy Hasan, Full-Stack Developer.';
         if (heroData) {
-            heroSection = `
-CURRENT HERO/PROFILE INFO (live from database):
-- Name: ${heroData.title || 'Mehedy Hasan'}
-- Designation: ${heroData.subtitle || 'Full-Stack Developer'}
-- Description: ${heroData.description || 'Physics researcher turned developer'}
-- Resume: ${heroData.resumeLink || 'Available on portfolio'}
-- GitHub: ${heroData.github || 'Not provided'}
-- LinkedIn: ${heroData.linkedin || 'Not provided'}
-- Facebook: ${heroData.facebook || 'Not provided'}`;
+            heroStr = `${heroData.title || 'Mehedy Hasan'} - ${heroData.subtitle || 'Full-Stack Developer'}. ${heroData.description || ''}`.trim();
         }
 
-        // Build dynamic about section
-        let aboutSection = '';
-        if (aboutData && aboutData.paragraphs && aboutData.paragraphs.length > 0) {
-            aboutSection = `
-CURRENT ABOUT INFO (live from database):
-${aboutData.paragraphs.map((p, i) => `Paragraph ${i + 1}: ${p}`).join('\n')}`;
-        }
-
-        // Build dynamic projects section
-        let projectsSection = '';
+        let projectsStr = 'No projects listed.';
         if (projects && projects.length > 0) {
-            projectsSection = `
-CURRENT PROJECTS (live from database):
-${projects.map((p) => `- ${p.name} (${p.tech || 'N/A'}): ${p.description || ''} ${p.featured ? '[FEATURED]' : ''}`).join('\n')}`;
+            projectsStr = projects.map(p => `- ${p.name}: ${p.tech}`).join('\n');
         }
+
+        const systemPrompt = `You are Mehedy Hasan's AI assistant. Keep answers 1-2 sentences, friendly. Use the info below:
+Profile: ${heroStr}
+Contact: ${contactStr}
+Projects: ${projectsStr}
+If asked something not here, suggest the contact form.`;
 
         const chatCompletion = await groq.chat.completions.create({
             messages: [
-                {
-                    role: 'system',
-                    content: `You are Mehedy Hasan's AI assistant on his portfolio website. You have access to live data from his database.
-
-ABOUT MEHEDY (static):
-- Full-stack web developer from Pabna, Bangladesh
-- MSc in Physics from Pabna University of Science & Technology (PUST)
-- Thesis: Solid State Physics
-- Web dev training: Programming Hero Bootcamp (Batch 13)
-- Skills: Next.js, React, Tailwind CSS, JavaScript, TypeScript, Node.js, Express, MongoDB, JWT, Nodemailer, Framer Motion, Git, Vercel
-- Hobbies: Chess, science documentaries, quantum mechanics
-
-${heroSection}
-
-${aboutSection}
-
-${contactSection}
-
-${projectsSection}
-
-RULES:
-- Keep responses friendly and short (1-3 sentences)
-- When asked for contact info, email, phone, social links — share from CURRENT CONTACT INFORMATION above
-- When asked about projects — share from CURRENT PROJECTS above
-- When asked about Mehedy's background — share from CURRENT ABOUT INFO or HERO/PROFILE INFO
-- Use emojis when sharing contact details
-- If data says "Not provided", suggest the contact form
-- If asked something unknown, say: "I don't have that info, but you can reach Mehedy through his portfolio's contact form!"`,
-                },
-                {
-                    role: 'user',
-                    content: message,
-                },
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: message },
             ],
             model: 'llama-3.3-70b-versatile',
             temperature: 0.7,
-            max_tokens: 250,
+            max_tokens: 150, // reduced
         });
 
         const reply = chatCompletion.choices[0].message.content;
         res.json({ reply });
     } catch (error) {
         console.error('Groq API error:', error);
-
-        // 🔧 TEMPORARY DEBUG — shows the actual error instead of the fallback
         res.status(500).json({
-            reply: `⚠️ Debug: ${error.message} (HTTP Status: ${error.status || 'none'})`,
+            reply: `⚠️ Debug: ${error.message} (Status: ${error.status || 'none'})`,
         });
-
-        // Original fallback (uncomment when done debugging):
-        // res.json({
-        //     reply: "I'm having a moment — probably too much physics thinking! Try asking again, or reach Mehedy through the contact form below. 😊",
-        // });
     }
 });
 
