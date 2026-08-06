@@ -179,7 +179,7 @@ RULES:
                     content: message,
                 },
             ],
-            model: 'llama-3.3-70b-versatile',
+           model: 'gemma2-9b-it',
             temperature: 0.7,
             max_tokens: 250,
         });
